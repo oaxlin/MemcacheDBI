@@ -84,7 +84,7 @@ The same as Cache::Memcached::Fast::get
 sub memd_get {
     warn "[debug $DEBUG]$me->memd_set\n" if $DEBUG && $DEBUG > 3;
     my ($self,$key) = @_;
-    return undef unless $self->{'MemcacheDBI'}->{'memd'};
+    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
     $self->{'MemcacheDBI'}->{'queue'}->{$key} // $self->{'MemcacheDBI'}->{'memd'}->get($key);
 }
 
@@ -97,7 +97,7 @@ The same as Cache::Memcached::Fast::set
 sub memd_set {
     warn "[debug $DEBUG]$me->memd_get\n" if $DEBUG && $DEBUG > 3;
     my ($self,$key,$value) = @_;
-    return undef unless $self->{'MemcacheDBI'}->{'memd'};
+    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
     $self->{'MemcacheDBI'}->{'queue'}->{$key} = $value;
     $self->memd_commit if $self->{'AutoCommit'};
     $value;
@@ -112,7 +112,7 @@ memd_commit only commits the memcache data, if you want to commit both simply us
 sub memd_commit {
     warn "[debug $DEBUG]$me->memd_commit\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
-    return 1 unless $self->{'MemcacheDBI'}->{'memd'};
+    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
     my $queue = $self->{'MemcacheDBI'}->{'queue'};
     foreach my $key (keys %$queue) {
         $self->{'MemcacheDBI'}->{'memd'}->set($key, $queue->{$key});
