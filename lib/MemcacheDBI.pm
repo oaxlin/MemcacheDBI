@@ -2,7 +2,6 @@ package MemcacheDBI;
 use strict;
 use warnings;
 use DBI;
-use Cache::Memcached::Fast;
 use vars qw( $AUTOLOAD $VERSION );
 $VERSION = '0.01';
 require 5.10.0;
@@ -64,7 +63,8 @@ sub memd_init {
         } elsif (ref $handle eq 'Cache::Memcached::Fast') {
             $node->{'MemcacheDBI'}->{'memd'} = $handle;
         } elsif (ref $handle eq 'HASH') {
-            $node->{'MemcacheDBI'}->{'memd'} = new Cache::Memcached::Fast $handle;
+            require Cache::Memcached::Fast;
+            $node->{'MemcacheDBI'}->{'memd'} = Cache::Memcached::Fast->new($handle);
         } else {
             die "Unknown ref type.";
         }
