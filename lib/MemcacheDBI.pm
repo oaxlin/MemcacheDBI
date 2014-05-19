@@ -134,7 +134,7 @@ sub dbh_commit {
 
 =head1 DBI methods can also be used, including but not limited to:
 
-=head2 commit
+=head2 connect
 
 The same as DBI->connect, returns a MemcacheDBI object so you can get your additional memcache functionality
 
