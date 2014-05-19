@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use DBI;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.01';
+$VERSION = '0.02';
 require 5.10.0;
 
 our $DEBUG;
@@ -112,6 +112,7 @@ memd_commit only commits the memcache data, if you want to commit both simply us
 sub memd_commit {
     warn "[debug $DEBUG]$me->memd_commit\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
+    return 1 if ! defined $self-{'MemcacheDBI'}->{'queue'};
     die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
     my $queue = $self->{'MemcacheDBI'}->{'queue'};
     foreach my $key (keys %$queue) {
