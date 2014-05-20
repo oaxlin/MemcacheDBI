@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Test::More tests => 19;
+use Test::More tests => 20;
 use Test::Deep;
 use Data::Dumper;
 
@@ -59,8 +59,8 @@ SKIP: {
 
 
 
-        skip 'no memcache server configured eg "export memd_server=localhost:11211"', 15 unless $memd_server;
-        SKIP2: {
+        SKIP: {
+            skip 'no memcache server configured eg "export memd_server=localhost:11211"', 15 unless $memd_server;
             my $newdbh = $dbh->memd_init({
                 servers => [$memd_server],
                 namespace => 'oaxlinMemcacheDBItests:',
@@ -106,6 +106,11 @@ SKIP: {
             cmp_deeply($data_dbh_outside,$data_cmp, 'Compare memcache to actual database');
         }
 
+
+
+
+        my $dump = Dumper $dbh,$dbh_outside,$dbh->{'MemcacheDBI'};
+        ok ($dump,'Data::Dumper returns successfully');
 
         $sth->finish;
         $dbh->disconnect;

@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use DBI;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.02';
+$VERSION = '0.03';
 require 5.10.0;
 
 our $DEBUG;
@@ -216,6 +216,27 @@ sub DELETE {
     $key eq 'MemcacheDBI' ? $self->{'MemcacheDBI'}={} : delete $self->{'MemcacheDBI'}->{'dbh'}->{$key};
 }
 
+sub CLEAR {
+    my ($self) = @_;
+}
+
+sub FIRSTKEY {
+    my ($self) = @_;
+    my $tmp = $self->{'MemcacheDBI'}->{'dbh'};
+    keys %$tmp;
+    return scalar each %$tmp;
+}
+
+sub NEXTKEY {
+    my ($self) = @_;
+    my $tmp = $self->{'MemcacheDBI'}->{'dbh'};
+    return scalar each %$tmp;
+}
+
+sub EXISTS {
+    my ($self,$key) = @_;
+    return exists $self->{'MemcacheDBI'}->{'dbh'}->{$key};
+}
 
 1;
 
