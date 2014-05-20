@@ -110,7 +110,9 @@ sub commit {
     warn "[debug $DEBUG]$me->commit\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
     # TODO handle rolling back the memcache stuff if dbh fails
-    $self->{'MemcacheDBI'}->memd->commit && $self->{'MemcacheDBI'}->{'dbh'}->commit(@_);
+    my $memd = $self->memd;
+    $memd->commit if $memd;
+    $self->{'MemcacheDBI'}->{'dbh'}->commit(@_);
 }
 
 =head2 rollback
