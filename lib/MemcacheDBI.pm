@@ -22,9 +22,9 @@ MemcacheDBI is a drop in replacement for DBI.  It allows you to do trivial cachi
   $dbh->memd_init(\%memcache_connection_args) # see Cache::Memcached::Fast
 
   # Cache::Memcached::Fast should work using these calls
-  $dbh->memd_get();
-  $dbh->memd_set();
-  $dbh->memd_commit(); # not a memcache call
+  $dbh->memd->get();
+  $dbh->memd->set();
+  $memd = $dbh->memd; #get a handle you can use wherever
 
   # DBI methods should all work as normal.  Additional new methods listed below
   $dbh->prepare();
@@ -56,15 +56,14 @@ Accepts a the following data types
 sub memd_init {
     warn "[debug $DEBUG]$me->memd_init\n" if $DEBUG && $DEBUG > 3;
     my $class = shift;
-    my $node = ref $class ? $class : do{ tie my %node, 'MemcacheDBI::TieDBH'; warn 'whee'; \%node; };
+    my $node = ref $class ? $class : do{ tie my %node, 'MemcacheDBI::Tie'; warn 'whee'; \%node; };
     while (my $handle = shift) {
         if (ref $handle eq 'DBI::db') {
             $node->{'MemcacheDBI'}->{'dbh'} = $handle;
         } elsif (ref $handle eq 'Cache::Memcached::Fast') {
-            $node->{'MemcacheDBI'}->{'memd'} = $handle;
+            $node->{'MemcacheDBI'}->{'memd'} = MemcacheDBI::Memd->memd_init($node,$handle);
         } elsif (ref $handle eq 'HASH') {
-            require Cache::Memcached::Fast;
-            $node->{'MemcacheDBI'}->{'memd'} = Cache::Memcached::Fast->new($handle);
+            $node->{'MemcacheDBI'}->{'memd'} = MemcacheDBI::Memd->memd_init($node,$handle);
         } else {
             die "Unknown ref type.";
         }
@@ -75,62 +74,14 @@ sub memd_init {
     return $class;
 }
 
-=head2 memd_get
+=head2 memd
 
-The same as Cache::Memcached::Fast::get
-
-=cut
-
-sub memd_get {
-    warn "[debug $DEBUG]$me->memd_set\n" if $DEBUG && $DEBUG > 3;
-    my ($self,$key) = @_;
-    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
-    $self->{'MemcacheDBI'}->{'queue'}->{$key} // $self->{'MemcacheDBI'}->{'memd'}->get($key);
-}
-
-=head2 memd_set
-
-The same as Cache::Memcached::Fast::set
+Get a memcache object that supports get/set/transactions
 
 =cut
 
-sub memd_set {
-    warn "[debug $DEBUG]$me->memd_get\n" if $DEBUG && $DEBUG > 3;
-    my ($self,$key,$value) = @_;
-    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
-    $self->{'MemcacheDBI'}->{'queue'}->{$key} = $value;
-    $self->memd_commit if $self->{'AutoCommit'};
-    $value;
-}
-
-=head2 memd_commit
-
-memd_commit only commits the memcache data, if you want to commit both simply use $obj->commit instead.
-
-=cut
-
-sub memd_commit {
-    warn "[debug $DEBUG]$me->memd_commit\n" if $DEBUG && $DEBUG > 3;
-    my $self = shift;
-    return 1 if ! defined $self-{'MemcacheDBI'}->{'queue'};
-    die 'memd not initialized'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'memd'};
-    my $queue = $self->{'MemcacheDBI'}->{'queue'};
-    foreach my $key (keys %$queue) {
-        $self->{'MemcacheDBI'}->{'memd'}->set($key, $queue->{$key});
-    }
-    delete $self->{'MemcacheDBI'}->{'queue'};
-    return 1;
-}
-
-=head2 dbh_commit
-
-dbh_commit only commits the dbh data, if you want to commit both simply use $obj->commit instead.
-
-=cut
-
-sub dbh_commit {
-    warn "[debug $DEBUG]$me->dbh_commit\n" if $DEBUG && $DEBUG > 3;
-    shift->{'MemcacheDBI'}->{'dbh'}->commit(@_);
+sub memd {
+    shift->{'MemcacheDBI'}->{'memd'};
 }
 
 =head1 DBI methods can also be used, including but not limited to:
@@ -144,8 +95,8 @@ The same as DBI->connect, returns a MemcacheDBI object so you can get your addit
 sub connect {
     warn "[debug $DEBUG]$me->connect\n" if $DEBUG && $DEBUG > 3;
     my $class = shift;
-    tie my %node, 'MemcacheDBI::TieDBH';
-    $node{'MemcacheDBI'}{'dbh'} = DBI->connect(@_);
+    tie my %node, 'MemcacheDBI::Tie';
+    $node{'MemcacheDBI'}->{'dbh'} = DBI->connect(@_);
     return bless \%node, $class;
 }
 
@@ -159,7 +110,7 @@ sub commit {
     warn "[debug $DEBUG]$me->commit\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
     # TODO handle rolling back the memcache stuff if dbh fails
-    $self->memd_commit && $self->{'MemcacheDBI'}->{'dbh'}->commit(@_);
+    $self->{'MemcacheDBI'}->memd->commit && $self->{'MemcacheDBI'}->{'dbh'}->commit(@_);
 }
 
 =head2 rollback
@@ -191,29 +142,76 @@ sub AUTOLOAD {
     $self->$field(@_);
 }
 
-package MemcacheDBI::TieDBH;
+package MemcacheDBI::Memd;
+
+sub memd_init {
+    my $class = shift;
+    my $dbh = shift;
+    my $handle = shift;
+    tie my %node, 'MemcacheDBI::Tie', 'memd';
+    require Cache::Memcached::Fast;
+    $handle = Cache::Memcached::Fast->new($handle) if ref $handle eq 'HASH';
+    $node{'MemcacheDBI'}{'memd'} = $handle;
+    $node{'MemcacheDBI'}{'dbh'} = $dbh; # careful, circular
+    return bless \%node, $class;
+}
+
+sub get {
+    my ($self,$key) = @_;
+    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key} // $self->{'MemcacheDBI'}->{'memd'}->get($key);
+}
+
+sub set {
+    my ($self,$key,$value) = @_;
+    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key} = $value;
+    $self->commit if $self->{'MemcacheDBI'}->{'dbh'}->{'AutoCommit'};
+    $value;
+}
+
+sub server_versions {
+    shift->{'MemcacheDBI'}->{'memd'}->server_versions(@_);
+}
+
+# do not confuse this with DBH commits
+sub commit {
+    my ($self) = @_;
+    my $queue = $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'};
+    foreach my $key (keys %$queue) {
+        $self->{'MemcacheDBI'}->{'memd'}->set($key, $queue->{$key});
+    }
+    delete $self->{'MemcacheDBI'}->{'queue'};
+    return 1;
+}
+
+package MemcacheDBI::Tie;
+
+# passes all calls to the parent $tie_type unless the key is MemcacheDBI
+# allows me to wrap my data in a container while somewhat preseving the parents operation
 
 sub TIEHASH {
     my $class = shift;
-    return bless {MemcacheDBI=>{}}, $class;
+    my $tie_type = shift || 'dbh'; # dbh or memd
+    return bless {MemcacheDBI=>{tie_type=>$tie_type}}, $class;
 }
 
 sub FETCH {
     my ($self,$key) = @_;
-    return $self->{'MemcacheDBI'} if ($key eq 'MemcacheDBI');
-    die 'DBI not initialized.'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'dbh'};
-    $self->{'MemcacheDBI'}->{'dbh'}->{$key};
+    my $short = $self->{'MemcacheDBI'};
+    return $short if $key eq 'MemcacheDBI';
+    $short->{$short->{'tie_type'}}->{$key};
 }
 
 sub STORE {
     my ($self,$key,$value) = @_;
-    die 'DBI not initialized.'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'dbh'};
-    $self->{'MemcacheDBI'}->{'dbh'}->{$key} = $value;
+    my $short = $self->{'MemcacheDBI'};
+    $short->{$short->{'tie_type'}}->{$key} = $value;
 }
 
 sub DELETE {
     my ($self,$key) = @_;
-    $key eq 'MemcacheDBI' ? $self->{'MemcacheDBI'}={} : delete $self->{'MemcacheDBI'}->{'dbh'}->{$key};
+    die 'Cannot delete MemcacheDBI'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } if $key eq 'MemcacheDBI';
+    my $short = $self->{'MemcacheDBI'};
+    delete $short->{$short->{'tie_type'}}->{$key};
 }
 
 sub CLEAR {
@@ -222,20 +220,21 @@ sub CLEAR {
 
 sub FIRSTKEY {
     my ($self) = @_;
-    my $tmp = $self->{'MemcacheDBI'}->{'dbh'};
+    my $tmp = $self->{'MemcacheDBI'}->{$self->{'MemcacheDBI'}->{'tie_type'}};
+    return unless ref $tmp eq 'HASH';
     keys %$tmp;
     return scalar each %$tmp;
 }
 
 sub NEXTKEY {
     my ($self) = @_;
-    my $tmp = $self->{'MemcacheDBI'}->{'dbh'};
+    my $tmp = $self->{'MemcacheDBI'}->{$self->{'MemcacheDBI'}->{'tie_type'}};
     return scalar each %$tmp;
 }
 
 sub EXISTS {
     my ($self,$key) = @_;
-    return exists $self->{'MemcacheDBI'}->{'dbh'}->{$key};
+    return exists $self->{'MemcacheDBI'}->{$self->{'MemcacheDBI'}->{'tie_type'}}->{$key};
 }
 
 1;
