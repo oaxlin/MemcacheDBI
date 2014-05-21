@@ -24,5 +24,7 @@ my $dbh = MemcacheDBI->connect($data_source, $user, $password, {
 
 {
 local $SIG{__WARN__} = sub{}; # eat warnings about commit being on since dbi:CVS doesn't support transactions
+
+#this is specifically to test that commit works without memcache being initialized
 ok($dbh->commit, 'commit');
 }
