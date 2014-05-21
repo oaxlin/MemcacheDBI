@@ -110,6 +110,7 @@ sub commit {
     warn "[debug $DEBUG]$me->commit\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
     # TODO handle rolling back the memcache stuff if dbh fails
+    warn 'Commit ineffective while AutoCommit is on'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } if $self->{'AutoCommit'};
     my $memd = $self->memd;
     $memd->commit if $memd;
     $self->{'MemcacheDBI'}->{'dbh'}->commit(@_);
