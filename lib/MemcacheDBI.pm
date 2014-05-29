@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use DBI;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.03';
+$VERSION = '0.04';
 require 5.10.0;
 
 our $DEBUG;
@@ -65,10 +65,11 @@ sub memd_init {
         } elsif (ref $handle eq 'HASH') {
             $node->{'MemcacheDBI'}->{'memd'} = MemcacheDBI::Memd->memd_init($node,$handle);
         } else {
-            die "Unknown ref type.";
+            die 'Unknown ref type'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" };
         }
     }
     if (! ref $class) {
+        return unless $node->{'MemcacheDBI'}->{'dbh'};
         return bless $node, $class;
     }
     return $class;
@@ -96,7 +97,8 @@ sub connect {
     warn "[debug $DEBUG]$me->connect\n" if $DEBUG && $DEBUG > 3;
     my $class = shift;
     tie my %node, 'MemcacheDBI::Tie';
-    $node{'MemcacheDBI'}->{'dbh'} = DBI->connect(@_);
+    eval{ $node{'MemcacheDBI'}->{'dbh'} = DBI->connect(@_) } or die $@.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" };
+    return unless $node{'MemcacheDBI'}->{'dbh'};
     return bless \%node, $class;
 }
 
@@ -140,8 +142,10 @@ sub AUTOLOAD {
     *$method = sub {
         my $self = shift;
         warn "[debug $DEBUG]${me}->{'dbh'}->$field\n" if $DEBUG && $DEBUG > 3;
+        die 'Can\'t locate object method "'.$field.'" via package "'.(ref $self->{'MemcacheDBI'}->{'dbh'}).'"'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'dbh'}->can($field);
         $self->{'MemcacheDBI'}->{'dbh'}->$field(@_);
     };
+    die 'Can\'t locate object method "'.$field.'" via package "'.(ref $self->{'MemcacheDBI'}->{'dbh'}).'"'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } unless $self->{'MemcacheDBI'}->{'dbh'}->can($field);
     $self->$field(@_);
 }
 
