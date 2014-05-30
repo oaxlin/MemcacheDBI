@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
-use Test::More tests => 29;
+use Test::More tests => 22;
 use Test::Deep;
 use Data::Dumper;
 
@@ -25,11 +25,11 @@ cmp_ok(ref $dbh_outside,'eq','DBI::db', 'DBH created successfully');
 
 
 SKIP: {
-    skip 'Failed to connect to database', 17 unless ref $dbh_outside;
+    skip 'Failed to connect to database', 20 unless ref $dbh_outside;
 
     foreach my $AutoCommit ( 1, 0 ) {
         SKIP: {
-            skip 'dbi:CSV does not support transactions', 9 if !$AutoCommit && $data_source =~ /^dbi:CSV:/;
+            skip 'dbi:CSV does not support transactions', 10 if !$AutoCommit && $data_source =~ /^dbi:CSV:/;
 
             my $testData = 'abc'.$AutoCommit;
             my $dbh = MemcacheDBI->connect($data_source, $user, $password, {
@@ -58,7 +58,7 @@ SKIP: {
 
 
             SKIP: {
-                skip 'no memcache server configured eg "export memd_server=localhost:11211"', 15 unless $memd_server;
+                skip 'no memcache server configured eg "export memd_server=localhost:11211"', 7 unless 0 && $memd_server;
                 my $newdbh = $dbh->memd_init({
                     servers => [$memd_server],
                     namespace => 'oaxlinMemcacheDBItests:',
@@ -91,17 +91,21 @@ SKIP: {
                 my $data_cmp;
                 if (! $dbh->{'AutoCommit'}) {
                     my $data_memd3 = $dbh->memd->get('test1');
-                    cmp_deeply($data_memd3,$data_memd2, 'Memcache get success, before rollback');
+                    my $sth = $dbh->prepare("select locationnum,custnum,district from $table where locationnum = 126");
+                    $sth->execute;
+                    my $data_dbh = $sth->fetchrow_hashref;
+                    cmp_deeply($data_memd3,$data_dbh, 'Memcache get success, before rollback');
                     $dbh->rollback;
-                    $data_cmp = $data_memd;
                 } else {
-                    $data_cmp = $data_memd2;
+                    my $data_memd3 = $dbh->memd->get('test1');
+                    ok($data_memd3, 'Memcache get success, with AutoCommit');
                 }
                 cmp_deeply($data_memd_updated,$data_memd2, 'Memcache get success');
 
                 $sth = $dbh_outside->prepare("select locationnum,custnum,district from $table where locationnum = 126");
                 $sth->execute;
                 my $data_dbh_outside = $sth->fetchrow_hashref;
+                $data_cmp = $dbh->memd->get('test1');
                 cmp_deeply($data_dbh_outside,$data_cmp, 'Compare memcache to actual database');
             }
 
