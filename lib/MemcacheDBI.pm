@@ -3,7 +3,7 @@ use strict;
 use warnings;
 use DBI;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.04';
+$VERSION = '0.05';
 require 5.10.0;
 
 our $DEBUG;
