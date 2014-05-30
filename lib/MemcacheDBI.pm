@@ -2,8 +2,9 @@ package MemcacheDBI;
 use strict;
 use warnings;
 use DBI;
+use Clone;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.05';
+$VERSION = '0.06';
 require 5.10.0;
 
 our $DEBUG;
@@ -165,19 +166,50 @@ sub memd_init {
 
 sub get {
     my ($self,$key) = @_;
-    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key} // $self->{'MemcacheDBI'}->{'memd'}->get($key);
+    return if $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'}->{$key};
+    if (exists $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key}) {
+        return $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key};
+    }
+    $self->{'MemcacheDBI'}->{'memd'}->get($key);
 }
 
 sub set {
     my ($self,$key,$value) = @_;
-    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key} = $value;
-    $self->commit if $self->{'MemcacheDBI'}->{'dbh'}->{'AutoCommit'};
-    $value;
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'}->{$key};
+    if ($self->{'MemcacheDBI'}->{'dbh'}->{'AutoCommit'}) {
+        delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key};
+        return $self->{'MemcacheDBI'}->{'memd'}->set($key, $value);
+    }
+    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key} = Clone::clone($value);
+    1;
 }
 
-sub server_versions {
-    shift->{'MemcacheDBI'}->{'memd'}->server_versions(@_);
+sub delete {
+    my ($self,$key) = @_;
+    if ($self->{'MemcacheDBI'}->{'dbh'}->{'AutoCommit'}) {
+        delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'}->{$key};
+        delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key};
+        return $self->{'MemcacheDBI'}->{'memd'}->delete($key);
+    }
+    my $val = $self->get($key);
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}->{$key};
+    $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'}->{$key} = 1;
+    $val ? 1 : '';
 }
+sub remove { shift->delete(@_); }
+
+sub namespace {
+    my $self = shift;
+    if (scalar @_ && !$self->{'MemcacheDBI'}->{'dbh'}->{'AutoCommit'} && (
+            $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'}
+            || $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'}
+        )) {
+        die 'Cannot set namespace during a transaction'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" };
+    }
+    $self->{'MemcacheDBI'}->{'memd'}->namespace(@_);
+}
+
+sub server_versions { shift->{'MemcacheDBI'}->{'memd'}->server_versions(@_); }
 
 # do not confuse this with DBH commits
 sub commit {
@@ -187,6 +219,13 @@ sub commit {
         $self->{'MemcacheDBI'}->{'memd'}->set($key, $queue->{$key});
     }
     delete $self->{'MemcacheDBI'}->{'queue'};
+
+    $queue = $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'};
+    foreach my $key (keys %$queue) {
+        $self->{'MemcacheDBI'}->{'memd'}->delete($key);
+    }
+    delete $self->{'MemcacheDBI'}->{'queue_delete'};
+
     return 1;
 }
 
