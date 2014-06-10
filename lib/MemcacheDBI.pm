@@ -4,7 +4,7 @@ use warnings;
 use DBI;
 use Clone;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.06';
+$VERSION = '0.07';
 require 5.10.0;
 
 our $DEBUG;
