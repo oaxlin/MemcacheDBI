@@ -4,7 +4,7 @@ use warnings;
 use DBI;
 use Clone;
 use vars qw( $AUTOLOAD $VERSION );
-$VERSION = '0.07';
+$VERSION = '0.08';
 require 5.10.0;
 
 our $DEBUG;
@@ -128,8 +128,9 @@ The same as DBI->rollback, however it will also rollback the memcached queue
 sub rollback {
     warn "[debug $DEBUG]$me->rollback\n" if $DEBUG && $DEBUG > 3;
     my $self = shift;
-    delete $self->{'MemcacheDBI'}->{'queue'};
     warn 'rollback ineffective with AutoCommit enabled'.do{my @c = caller; ' at '.$c[1].' line '.$c[2]."\n" } if $self->{'AutoCommit'};
+    my $memd = $self->memd;
+    $memd->rollback if $memd;
     $self->{'MemcacheDBI'}->{'dbh'}->rollback(@_);
 }
 
@@ -218,13 +219,21 @@ sub commit {
     foreach my $key (keys %$queue) {
         $self->{'MemcacheDBI'}->{'memd'}->set($key, $queue->{$key});
     }
-    delete $self->{'MemcacheDBI'}->{'queue'};
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'};
 
     $queue = $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'};
     foreach my $key (keys %$queue) {
         $self->{'MemcacheDBI'}->{'memd'}->delete($key);
     }
-    delete $self->{'MemcacheDBI'}->{'queue_delete'};
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'};
+
+    return 1;
+}
+
+sub rollback {
+    my ($self) = @_;
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue'};
+    delete $self->{'MemcacheDBI'}->{'dbh'}->{'MemcacheDBI'}->{'queue_delete'};
 
     return 1;
 }
