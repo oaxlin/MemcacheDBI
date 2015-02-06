@@ -57,7 +57,7 @@ Accepts a the following data types
 sub memd_init {
     warn "[debug $DEBUG]$me->memd_init\n" if $DEBUG && $DEBUG > 3;
     my $class = shift;
-    my $node = ref $class ? $class : do{ tie my %node, 'MemcacheDBI::Tie'; warn 'whee'; \%node; };
+    my $node = ref $class ? $class : do{ tie my %node, 'MemcacheDBI::Tie'; \%node; };
     while (my $handle = shift) {
         if (ref $handle eq 'DBI::db') {
             $node->{'MemcacheDBI'}->{'dbh'} = $handle;
